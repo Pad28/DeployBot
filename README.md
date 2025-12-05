@@ -181,9 +181,24 @@ Configura una rama para monitorear y notificar.
 - `deploy-command`: (opcional) Comando de deploy (ej: `npm run deploy`)
 - `environment`: (opcional) Nombre del ambiente
 
-**Ejemplo:**
+**Notas importantes:**
+- Los comandos de build y deploy son opcionales. Si no los configuras, el bot solo:
+  - Clonará/actualizará el repositorio
+  - Enviará notificaciones cuando haya cambios
+  - No ejecutará build ni deploy
+- **Puedes actualizar la configuración después:** Si una rama ya está configurada, ejecutar `/config-branch` de nuevo actualizará la configuración existente. Esto te permite:
+  - Agregar comandos de build/deploy más tarde
+  - Cambiar el canal de notificaciones
+  - Modificar cualquier parámetro de la configuración
+
+**Ejemplo inicial (solo notificaciones):**
 ```
-/config-branch repo:mi-proyecto branch:staging canal:#deploy-pruebas canal-pr:#pull-requests build-command:"npm run build" deploy-command:"npm run deploy:staging" environment:staging
+/config-branch repo:mi-proyecto branch:develop canal:#notificaciones
+```
+
+**Ejemplo actualizando (agregando build y deploy después):**
+```
+/config-branch repo:mi-proyecto branch:develop canal:#notificaciones build-command:"npm run build" deploy-command:"npm run deploy" environment:development
 ```
 
 #### `/remove-repo`
