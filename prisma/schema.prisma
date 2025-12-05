@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Provider {
+  GITHUB
+  GITLAB
+}
+
+model Repository {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  gitUrl        String
+  provider      Provider
+  branches      Json // BranchConfig[]
+  webhookSecret String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  deployments Deployment[]
+
+  @@map("repositories")
+}
+
+enum DeploymentStatus {
+  PENDING
+  BUILDING
+  DEPLOYING
+  SUCCESS
+  FAILED
+}
+
+model Deployment {
+  id            String           @id @default(uuid())
+  repositoryId  String
+  branch        String
+  commit        String
+  commitMessage String
+  author        String
+  status        DeploymentStatus
+  buildLog      String?          @db.Text
+  deployLog     String?          @db.Text
+  error         String?          @db.Text
+  startedAt     DateTime         @default(now())
+  completedAt   DateTime?
+  createdAt     DateTime         @default(now())
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@index([repositoryId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("deployments")
+}
+
+enum BugStatus {
+  OPEN
+  RESOLVED
+}
+
+enum BugPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Bug {
+  id          String       @id @default(uuid())
+  title       String
+  description String       @db.Text
+  reporterId  String // Discord user ID
+  reporterTag String // Discord username#discriminator
+  status      BugStatus    @default(OPEN)
+  priority    BugPriority?
+  repository  String? // Repositorio relacionado (opcional)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  resolvedAt  DateTime?
+  resolvedBy  String? // Discord user ID que resolvió
+
+  @@index([status])
+  @@index([reporterId])
+  @@index([createdAt])
+  @@map("bugs")
+}
