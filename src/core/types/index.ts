@@ -1,4 +1,4 @@
-import { Provider, DeploymentStatus, BugStatus, BugPriority } from '../../generated/prisma/enums';
+import { Provider, DeploymentStatus, BugStatus, BugPriority } from '@prisma/client';
 
 export type GitProvider = Provider;
 

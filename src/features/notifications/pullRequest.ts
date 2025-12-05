@@ -1,5 +1,5 @@
 import { EmbedBuilder, PermissionFlagsBits } from 'discord.js';
-import { Repository } from '../../generated/prisma/client';
+import { Repository } from '@prisma/client';
 import { getBotInstance } from '../../core/discord/botInstance';
 import logger from '../../shared/utils/logger';
 

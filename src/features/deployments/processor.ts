@@ -1,6 +1,6 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { Repository, Deployment } from '../../generated/prisma/client';
+import { Repository, Deployment } from '@prisma/client';
 import { BranchConfig, DeploymentStatus } from '../../core/types';
 import prisma from '../../core/database/client';
 import logger from '../../shared/utils/logger';
