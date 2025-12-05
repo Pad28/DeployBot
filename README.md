@@ -262,10 +262,16 @@ Marca un bug como resuelto.
 npm run dev
 
 # Compilar
-npm run build
+npm run build  # Genera el cliente de Prisma automáticamente antes de compilar
 
 # Ejecutar producción
 npm start
+```
+
+**Nota importante:** El script `build` genera automáticamente el cliente de Prisma antes de compilar. Si necesitas generarlo manualmente:
+
+```bash
+npx prisma generate
 ```
 
 ## 📁 Estructura del Proyecto

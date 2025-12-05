@@ -144,10 +144,10 @@ export const configureBranchCommand: Command = {
         });
 
         const filtered = repos
-          .filter((repo) =>
+          .filter((repo: any) =>
             repo.name.toLowerCase().includes(focusedOption.value.toLowerCase())
           )
-          .map((repo) => ({
+          .map((repo: any) => ({
             name: repo.name,
             value: repo.name,
           }));

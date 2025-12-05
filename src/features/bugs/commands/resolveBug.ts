@@ -108,14 +108,14 @@ export const resolveBugCommand: Command = {
                 });
 
                 const filtered = bugs
-                    .filter((bug) => {
+                    .filter((bug: any) => {
                         const searchValue = focusedOption.value.toLowerCase();
                         return (
                             bug.id.toLowerCase().includes(searchValue) ||
                             bug.title.toLowerCase().includes(searchValue)
                         );
                     })
-                    .map((bug) => ({
+                    .map((bug: any) => ({
                         name: `${bug.title.substring(0, 50)} (${bug.id.substring(0, 8)})`,
                         value: bug.id,
                     }));

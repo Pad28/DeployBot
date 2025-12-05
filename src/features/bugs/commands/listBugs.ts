@@ -66,7 +66,7 @@ export const listBugsCommand: Command = {
                 .setColor(filtro === BugStatus.OPEN ? 0xff9900 : 0x00ff00)
                 .setTimestamp();
 
-            bugs.forEach((bug, index) => {
+            bugs.forEach((bug: any, index: number) => {
                 const statusEmoji = bug.status === BugStatus.OPEN ? '🔴' : '✅';
                 const priorityEmoji =
                     bug.priority === BugPriority.CRITICAL

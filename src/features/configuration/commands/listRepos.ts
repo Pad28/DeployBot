@@ -33,7 +33,7 @@ export const listReposCommand: Command = {
         .setColor(0x0099ff)
         .setTimestamp();
 
-      repos.forEach((repo) => {
+      repos.forEach((repo: any) => {
         const branches = (repo.branches as any[]) || [];
         embed.addFields({
           name: `🔹 ${repo.name}`,
