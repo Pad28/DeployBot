@@ -13,6 +13,7 @@ const envSchema = z.object({
     DEPLOY_BASE_PATH: z.string().default('/tmp/deployments'),
     GITHUB_TOKEN: z.string().optional(),
     GITLAB_TOKEN: z.string().optional(),
+    NODE_ENV: z.enum(['development', 'production']).default('development'),
 });
 
 export type Env = z.infer<typeof envSchema>;
