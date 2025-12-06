@@ -84,11 +84,11 @@ export async function processDeployment(
         let remoteBranches: string[] = [];
         try {
             const lsRemoteResult = await git.listRemote(['--heads', authenticatedUrl]);
-            
+
             if (!lsRemoteResult || !lsRemoteResult.trim()) {
                 throw new Error('No se recibieron ramas del repositorio remoto');
             }
-            
+
             remoteBranches = lsRemoteResult
                 .split('\n')
                 .filter((line: string) => line.trim())
@@ -98,9 +98,9 @@ export async function processDeployment(
                     return match ? match[1] : null;
                 })
                 .filter((branch: string | null): branch is string => branch !== null);
-            
+
             logger.info(`Ramas remotas encontradas: ${remoteBranches.join(', ')}`);
-            
+
             if (!remoteBranches.includes(branchConfig.branch)) {
                 throw new Error(
                     `La rama "${branchConfig.branch}" no existe en el repositorio remoto. ` +
@@ -124,23 +124,23 @@ export async function processDeployment(
         if (isGitRepo) {
             // Ya existe, hacer checkout y pull
             const gitInPath = simpleGit(deployPath);
-            
+
             // Si la URL cambió (se agregó token), actualizar el remote
             if (authenticatedUrl !== repo.gitUrl) {
-                await gitInPath.removeRemote('origin').catch(() => {});
+                await gitInPath.removeRemote('origin').catch(() => { });
                 await gitInPath.addRemote('origin', authenticatedUrl);
             }
-            
+
             // Fetch para asegurar que tenemos las últimas referencias
             await gitInPath.fetch('origin').catch((err) => {
                 logger.warn(`Error en fetch: ${err.message}`);
             });
-            
+
             await gitInPath.checkout(branchConfig.branch).catch(async () => {
                 // Si la rama local no existe, crear tracking branch
                 await gitInPath.checkout(['-b', branchConfig.branch, `origin/${branchConfig.branch}`]);
             });
-            
+
             await gitInPath.pull('origin', branchConfig.branch);
         } else {
             // Clonar en directorio limpio (ya verificamos que la rama existe arriba)

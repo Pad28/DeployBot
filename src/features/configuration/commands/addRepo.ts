@@ -4,6 +4,7 @@ import { Command } from './index';
 import logger from '../../../shared/utils/logger';
 import { Provider } from '../../../core/types';
 import { env } from '../../../shared/config/env';
+import { requireAdminPermission } from '../../../shared/utils/permissions';
 
 const addRepoBuilder = new SlashCommandBuilder()
     .setName('add-repo')
@@ -35,6 +36,11 @@ export const addRepoCommand: Command = {
     data: addRepoBuilder,
 
     async execute(interaction: ChatInputCommandInteraction) {
+        // Verificar permisos antes de defer
+        if (!await requireAdminPermission(interaction)) {
+            return;
+        }
+
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         const nombre = interaction.options.getString('nombre', true);

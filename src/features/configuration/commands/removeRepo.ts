@@ -8,6 +8,7 @@ import {
 import prisma from '../../../core/database/client';
 import { Command } from './index';
 import logger from '../../../shared/utils/logger';
+import { requireAdminPermission } from '../../../shared/utils/permissions';
 
 export const removeRepoCommand: Command = {
   data: new SlashCommandBuilder()
@@ -22,6 +23,11 @@ export const removeRepoCommand: Command = {
     ),
 
   async execute(interaction: ChatInputCommandInteraction) {
+    // Verificar permisos antes de defer
+    if (!await requireAdminPermission(interaction)) {
+      return;
+    }
+
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const nombre = interaction.options.getString('nombre', true);

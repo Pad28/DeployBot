@@ -10,6 +10,7 @@ import prisma from '../../../core/database/client';
 import { Command } from './index';
 import { BranchConfig } from '../../../core/types';
 import logger from '../../../shared/utils/logger';
+import { requireAdminPermission } from '../../../shared/utils/permissions';
 
 export const configureBranchCommand: Command = {
   data: new SlashCommandBuilder()
@@ -62,6 +63,11 @@ export const configureBranchCommand: Command = {
     ),
 
   async execute(interaction: ChatInputCommandInteraction) {
+    // Verificar permisos antes de defer
+    if (!await requireAdminPermission(interaction)) {
+      return;
+    }
+
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const repoName = interaction.options.getString('repo', true);
