@@ -172,6 +172,8 @@ Lista todos los repositorios monitoreados.
 #### `/config-branch`
 Configura una rama para monitorear y notificar.
 
+**Permisos:** Solo administradores
+
 **Parámetros:**
 - `repo`: Nombre del repositorio (autocompletado)
 - `branch`: Nombre de la rama (ej: staging, main)
@@ -203,6 +205,8 @@ Configura una rama para monitorear y notificar.
 
 #### `/remove-repo`
 Elimina un repositorio del monitoreo.
+
+**Permisos:** Solo administradores
 
 ### Comandos de Bugs
 
