@@ -67,20 +67,25 @@ export async function processDeployment(
         // Preparar URL con autenticación si hay token disponible
         let authenticatedUrl = repo.gitUrl;
         if (repo.provider === 'GITHUB' && env.GITHUB_TOKEN) {
-            // Reemplazar https://github.com/ con token
-            authenticatedUrl = repo.gitUrl.replace(
-                /^https:\/\/(github\.com\/)/,
-                `https://${env.GITHUB_TOKEN}@$1`
-            );
+            // Si ya tiene token, no agregarlo de nuevo
+            if (!repo.gitUrl.includes(env.GITHUB_TOKEN)) {
+                authenticatedUrl = repo.gitUrl.replace(
+                    /^https:\/\/(?:.*@)?(github\.com\/)/,
+                    `https://${env.GITHUB_TOKEN}@$1`
+                );
+            }
         } else if (repo.provider === 'GITLAB' && env.GITLAB_TOKEN) {
-            // Reemplazar https:// con token para GitLab
-            authenticatedUrl = repo.gitUrl.replace(
-                /^https:\/\/(gitlab\.com\/|.*@gitlab\.com\/)/,
-                `https://oauth2:${env.GITLAB_TOKEN}@$1`
-            );
+            // Si ya tiene token, no agregarlo de nuevo
+            if (!repo.gitUrl.includes(env.GITLAB_TOKEN)) {
+                authenticatedUrl = repo.gitUrl.replace(
+                    /^https:\/\/(?:oauth2:.*@)?(gitlab\.com\/|.*@gitlab\.com\/)/,
+                    `https://oauth2:${env.GITLAB_TOKEN}@$1`
+                );
+            }
         }
 
         // Verificar que la rama existe en el remoto usando ls-remote (más confiable)
+        // Esto evita intentar clonar/checkout una rama que no existe
         let remoteBranches: string[] = [];
         try {
             const lsRemoteResult = await git.listRemote(['--heads', authenticatedUrl]);
@@ -93,28 +98,49 @@ export async function processDeployment(
                 .split('\n')
                 .filter((line: string) => line.trim())
                 .map((line: string) => {
-                    // Formato: <hash>    refs/heads/<branch-name>
+                    // Formato: <hash>    refs/heads/<branch-name> o <hash>\trefs/heads/<branch-name>
                     const match = line.match(/refs\/heads\/(.+)$/);
                     return match ? match[1] : null;
                 })
                 .filter((branch: string | null): branch is string => branch !== null);
 
-            logger.info(`Ramas remotas encontradas: ${remoteBranches.join(', ')}`);
+            if (remoteBranches.length === 0) {
+                throw new Error('No se encontraron ramas en el repositorio remoto');
+            }
+
+            logger.info(`Ramas remotas encontradas para ${repo.name}: ${remoteBranches.join(', ')}`);
 
             if (!remoteBranches.includes(branchConfig.branch)) {
+                const availableBranches = remoteBranches.join(', ');
                 throw new Error(
                     `La rama "${branchConfig.branch}" no existe en el repositorio remoto. ` +
-                    `Ramas disponibles: ${remoteBranches.join(', ')}`
+                    `Ramas disponibles: ${availableBranches}`
                 );
             }
         } catch (verifyError: any) {
             // Si el error ya tiene mensaje sobre ramas disponibles, re-lanzarlo
             if (verifyError.message.includes('Ramas disponibles')) {
-                logger.error(`Error verificando ramas remotas: ${verifyError.message}`);
+                logger.error(`Rama no encontrada: ${verifyError.message}`);
                 throw verifyError;
             }
-            // Si es otro error, loguear el error completo y re-lanzarlo
-            logger.error(`Error al verificar ramas remotas (URL: ${repo.gitUrl}): ${verifyError.message}`);
+            // Si es otro error (acceso denegado, repo no existe, etc.), proporcionar mensaje útil
+            logger.error(`Error verificando ramas remotas para ${repo.name} (${repo.gitUrl}): ${verifyError.message}`);
+            
+            // Detectar errores comunes y proporcionar mensajes más específicos
+            const errorMsg = verifyError.message?.toLowerCase() || '';
+            if (errorMsg.includes('authentication') || errorMsg.includes('permission')) {
+                throw new Error(
+                    `Error de autenticación al acceder al repositorio. ` +
+                    `Verifica que el token (${repo.provider === 'GITHUB' ? 'GITHUB_TOKEN' : 'GITLAB_TOKEN'}) ` +
+                    `tenga permisos para acceder a este repositorio.`
+                );
+            } else if (errorMsg.includes('not found') || errorMsg.includes('404')) {
+                throw new Error(
+                    `Repositorio no encontrado o no accesible: ${repo.gitUrl}. ` +
+                    `Verifica que la URL sea correcta y que tengas acceso al repositorio.`
+                );
+            }
+            
             throw new Error(
                 `No se pudo verificar las ramas remotas. Error: ${verifyError.message}. ` +
                 `Verifica que el repositorio sea accesible y que tengas los permisos necesarios.`
@@ -122,30 +148,86 @@ export async function processDeployment(
         }
 
         if (isGitRepo) {
-            // Ya existe, hacer checkout y pull
+            // Repositorio ya existe, actualizar
             const gitInPath = simpleGit(deployPath);
 
-            // Si la URL cambió (se agregó token), actualizar el remote
-            if (authenticatedUrl !== repo.gitUrl) {
-                await gitInPath.removeRemote('origin').catch(() => { });
-                await gitInPath.addRemote('origin', authenticatedUrl);
+            // Actualizar remote si la URL cambió (p. ej., se agregó token)
+            try {
+                const currentRemoteUrl = await gitInPath.getRemotes(true);
+                const hasOrigin = currentRemoteUrl.some((r: any) => r.name === 'origin');
+                
+                if (!hasOrigin || currentRemoteUrl.find((r: any) => r.name === 'origin')?.refs?.fetch !== authenticatedUrl) {
+                    if (hasOrigin) {
+                        await gitInPath.removeRemote('origin');
+                    }
+                    await gitInPath.addRemote('origin', authenticatedUrl);
+                    logger.info(`Remote 'origin' actualizado para ${repo.name}`);
+                }
+            } catch (remoteError: any) {
+                logger.warn(`Error actualizando remote: ${remoteError.message}`);
+                // Continuar - podría funcionar aún si el remote está configurado
             }
 
-            // Fetch para asegurar que tenemos las últimas referencias
-            await gitInPath.fetch('origin').catch((err) => {
-                logger.warn(`Error en fetch: ${err.message}`);
-            });
+            // Fetch para obtener las últimas referencias
+            try {
+                await gitInPath.fetch('origin', ['--prune']);
+                logger.info(`Fetch completado para ${repo.name}`);
+            } catch (fetchError: any) {
+                logger.error(`Error en fetch para ${repo.name}: ${fetchError.message}`);
+                throw new Error(
+                    `No se pudo actualizar el repositorio. Error en fetch: ${fetchError.message}. ` +
+                    `Verifica la conexión y los permisos de acceso.`
+                );
+            }
 
-            await gitInPath.checkout(branchConfig.branch).catch(async () => {
-                // Si la rama local no existe, crear tracking branch
-                await gitInPath.checkout(['-b', branchConfig.branch, `origin/${branchConfig.branch}`]);
-            });
+            // Checkout y pull de la rama
+            try {
+                // Verificar si la rama local existe
+                const branches = await gitInPath.branchLocal();
+                const branchExists = branches.all.includes(branchConfig.branch);
 
-            await gitInPath.pull('origin', branchConfig.branch);
+                if (branchExists) {
+                    // Cambiar a la rama existente
+                    await gitInPath.checkout(branchConfig.branch);
+                    // Asegurar que esté tracking el remoto correcto
+                    await gitInPath.branch(['--set-upstream-to', `origin/${branchConfig.branch}`, branchConfig.branch]).catch(() => {
+                        // Ignorar si ya está configurado
+                    });
+                } else {
+                    // Crear rama local tracking la remota
+                    await gitInPath.checkout(['-b', branchConfig.branch, `origin/${branchConfig.branch}`]);
+                }
+
+                // Pull para obtener los últimos cambios
+                await gitInPath.pull('origin', branchConfig.branch, ['--ff-only']);
+                logger.info(`Rama ${branchConfig.branch} actualizada para ${repo.name}`);
+            } catch (checkoutError: any) {
+                logger.error(`Error en checkout/pull para ${repo.name}/${branchConfig.branch}: ${checkoutError.message}`);
+                throw new Error(
+                    `No se pudo cambiar a la rama "${branchConfig.branch}". Error: ${checkoutError.message}. ` +
+                    `Asegúrate de que la rama existe en el remoto.`
+                );
+            }
         } else {
-            // Clonar en directorio limpio (ya verificamos que la rama existe arriba)
-            await fs.mkdir(path.dirname(deployPath), { recursive: true });
-            await git.clone(authenticatedUrl, deployPath, ['-b', branchConfig.branch]);
+            // Clonar repositorio nuevo
+            try {
+                await fs.mkdir(path.dirname(deployPath), { recursive: true });
+                logger.info(`Clonando ${repo.name} (rama: ${branchConfig.branch})...`);
+                await git.clone(authenticatedUrl, deployPath, ['-b', branchConfig.branch, '--depth', '1']);
+                logger.info(`Repositorio ${repo.name} clonado exitosamente`);
+            } catch (cloneError: any) {
+                logger.error(`Error clonando ${repo.name}: ${cloneError.message}`);
+                // Limpiar directorio parcial si existe
+                try {
+                    await fs.rm(deployPath, { recursive: true, force: true });
+                } catch {
+                    // Ignorar errores de limpieza
+                }
+                throw new Error(
+                    `No se pudo clonar el repositorio. Error: ${cloneError.message}. ` +
+                    `Verifica que la URL sea correcta y que tengas acceso al repositorio.`
+                );
+            }
         }
 
         // Ejecutar build si está configurado
