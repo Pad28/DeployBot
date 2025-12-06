@@ -108,8 +108,6 @@ export async function processDeployment(
                 throw new Error('No se encontraron ramas en el repositorio remoto');
             }
 
-            logger.info(`Ramas remotas encontradas para ${repo.name}: ${remoteBranches.join(', ')}`);
-
             if (!remoteBranches.includes(branchConfig.branch)) {
                 const availableBranches = remoteBranches.join(', ');
                 throw new Error(
@@ -125,7 +123,7 @@ export async function processDeployment(
             }
             // Si es otro error (acceso denegado, repo no existe, etc.), proporcionar mensaje útil
             logger.error(`Error verificando ramas remotas para ${repo.name} (${repo.gitUrl}): ${verifyError.message}`);
-            
+
             // Detectar errores comunes y proporcionar mensajes más específicos
             const errorMsg = verifyError.message?.toLowerCase() || '';
             if (errorMsg.includes('authentication') || errorMsg.includes('permission')) {
@@ -140,7 +138,7 @@ export async function processDeployment(
                     `Verifica que la URL sea correcta y que tengas acceso al repositorio.`
                 );
             }
-            
+
             throw new Error(
                 `No se pudo verificar las ramas remotas. Error: ${verifyError.message}. ` +
                 `Verifica que el repositorio sea accesible y que tengas los permisos necesarios.`
@@ -155,23 +153,20 @@ export async function processDeployment(
             try {
                 const currentRemoteUrl = await gitInPath.getRemotes(true);
                 const hasOrigin = currentRemoteUrl.some((r: any) => r.name === 'origin');
-                
+
                 if (!hasOrigin || currentRemoteUrl.find((r: any) => r.name === 'origin')?.refs?.fetch !== authenticatedUrl) {
                     if (hasOrigin) {
                         await gitInPath.removeRemote('origin');
                     }
                     await gitInPath.addRemote('origin', authenticatedUrl);
-                    logger.info(`Remote 'origin' actualizado para ${repo.name}`);
                 }
             } catch (remoteError: any) {
-                logger.warn(`Error actualizando remote: ${remoteError.message}`);
                 // Continuar - podría funcionar aún si el remote está configurado
             }
 
             // Fetch para obtener las últimas referencias
             try {
                 await gitInPath.fetch('origin', ['--prune']);
-                logger.info(`Fetch completado para ${repo.name}`);
             } catch (fetchError: any) {
                 logger.error(`Error en fetch para ${repo.name}: ${fetchError.message}`);
                 throw new Error(
@@ -200,7 +195,6 @@ export async function processDeployment(
 
                 // Pull para obtener los últimos cambios
                 await gitInPath.pull('origin', branchConfig.branch, ['--ff-only']);
-                logger.info(`Rama ${branchConfig.branch} actualizada para ${repo.name}`);
             } catch (checkoutError: any) {
                 logger.error(`Error en checkout/pull para ${repo.name}/${branchConfig.branch}: ${checkoutError.message}`);
                 throw new Error(
@@ -212,9 +206,7 @@ export async function processDeployment(
             // Clonar repositorio nuevo
             try {
                 await fs.mkdir(path.dirname(deployPath), { recursive: true });
-                logger.info(`Clonando ${repo.name} (rama: ${branchConfig.branch})...`);
                 await git.clone(authenticatedUrl, deployPath, ['-b', branchConfig.branch, '--depth', '1']);
-                logger.info(`Repositorio ${repo.name} clonado exitosamente`);
             } catch (cloneError: any) {
                 logger.error(`Error clonando ${repo.name}: ${cloneError.message}`);
                 // Limpiar directorio parcial si existe
