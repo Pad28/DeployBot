@@ -80,6 +80,47 @@ export async function processDeployment(
             );
         }
 
+        // Verificar que la rama existe en el remoto usando ls-remote (más confiable)
+        let remoteBranches: string[] = [];
+        try {
+            const lsRemoteResult = await git.listRemote(['--heads', authenticatedUrl]);
+            
+            if (!lsRemoteResult || !lsRemoteResult.trim()) {
+                throw new Error('No se recibieron ramas del repositorio remoto');
+            }
+            
+            remoteBranches = lsRemoteResult
+                .split('\n')
+                .filter((line: string) => line.trim())
+                .map((line: string) => {
+                    // Formato: <hash>    refs/heads/<branch-name>
+                    const match = line.match(/refs\/heads\/(.+)$/);
+                    return match ? match[1] : null;
+                })
+                .filter((branch: string | null): branch is string => branch !== null);
+            
+            logger.info(`Ramas remotas encontradas: ${remoteBranches.join(', ')}`);
+            
+            if (!remoteBranches.includes(branchConfig.branch)) {
+                throw new Error(
+                    `La rama "${branchConfig.branch}" no existe en el repositorio remoto. ` +
+                    `Ramas disponibles: ${remoteBranches.join(', ')}`
+                );
+            }
+        } catch (verifyError: any) {
+            // Si el error ya tiene mensaje sobre ramas disponibles, re-lanzarlo
+            if (verifyError.message.includes('Ramas disponibles')) {
+                logger.error(`Error verificando ramas remotas: ${verifyError.message}`);
+                throw verifyError;
+            }
+            // Si es otro error, loguear el error completo y re-lanzarlo
+            logger.error(`Error al verificar ramas remotas (URL: ${repo.gitUrl}): ${verifyError.message}`);
+            throw new Error(
+                `No se pudo verificar las ramas remotas. Error: ${verifyError.message}. ` +
+                `Verifica que el repositorio sea accesible y que tengas los permisos necesarios.`
+            );
+        }
+
         if (isGitRepo) {
             // Ya existe, hacer checkout y pull
             const gitInPath = simpleGit(deployPath);
@@ -90,24 +131,10 @@ export async function processDeployment(
                 await gitInPath.addRemote('origin', authenticatedUrl);
             }
             
-            // Obtener ramas remotas para verificar que existe
-            try {
-                await gitInPath.fetch('origin');
-                const branches = await gitInPath.branch(['-r']);
-                const branchExists = branches.all.some(
-                    (b: string) => b.includes(`origin/${branchConfig.branch}`)
-                );
-                
-                if (!branchExists) {
-                    throw new Error(
-                        `La rama "${branchConfig.branch}" no existe en el repositorio remoto. ` +
-                        `Ramas disponibles: ${branches.all.filter((b: string) => b.includes('origin/')).join(', ')}`
-                    );
-                }
-            } catch (fetchError: any) {
-                // Si falla el fetch, intentar continuar pero podría fallar después
-                logger.warn(`No se pudo verificar ramas remotas: ${fetchError.message}`);
-            }
+            // Fetch para asegurar que tenemos las últimas referencias
+            await gitInPath.fetch('origin').catch((err) => {
+                logger.warn(`Error en fetch: ${err.message}`);
+            });
             
             await gitInPath.checkout(branchConfig.branch).catch(async () => {
                 // Si la rama local no existe, crear tracking branch
@@ -116,33 +143,9 @@ export async function processDeployment(
             
             await gitInPath.pull('origin', branchConfig.branch);
         } else {
-            // Clonar en directorio limpio
+            // Clonar en directorio limpio (ya verificamos que la rama existe arriba)
             await fs.mkdir(path.dirname(deployPath), { recursive: true });
-            
-            try {
-                await git.clone(authenticatedUrl, deployPath, ['-b', branchConfig.branch]);
-            } catch (cloneError: any) {
-                if (cloneError.message?.includes('Remote branch') && cloneError.message?.includes('not found')) {
-                    // Intentar clonar sin especificar la rama y luego hacer checkout
-                    await git.clone(authenticatedUrl, deployPath);
-                    const gitInPath = simpleGit(deployPath);
-                    const branches = await gitInPath.branch(['-r']);
-                    const branchExists = branches.all.some(
-                        (b: string) => b.includes(`origin/${branchConfig.branch}`)
-                    );
-                    
-                    if (!branchExists) {
-                        throw new Error(
-                            `La rama "${branchConfig.branch}" no existe en el repositorio remoto. ` +
-                            `Ramas disponibles: ${branches.all.filter((b: string) => b.includes('origin/')).map((b: string) => b.replace('origin/', '')).join(', ')}`
-                        );
-                    }
-                    
-                    await gitInPath.checkout(['-b', branchConfig.branch, `origin/${branchConfig.branch}`]);
-                } else {
-                    throw cloneError;
-                }
-            }
+            await git.clone(authenticatedUrl, deployPath, ['-b', branchConfig.branch]);
         }
 
         // Ejecutar build si está configurado
