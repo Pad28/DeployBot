@@ -9,6 +9,7 @@ import prisma from '../../../core/database/client';
 import { Command } from './index';
 import logger from '../../../shared/utils/logger';
 import { requireAdminPermission } from '../../../shared/utils/permissions';
+import { DeploymentStatus } from '@prisma/client';
 
 export const removeRepoCommand: Command = {
   data: new SlashCommandBuilder()
@@ -35,6 +36,19 @@ export const removeRepoCommand: Command = {
     try {
       const repo = await prisma.repository.findUnique({
         where: { name: nombre },
+        include: {
+          _count: {
+            select: {
+              deployments: {
+                where: {
+                  status: {
+                    in: [DeploymentStatus.PENDING, DeploymentStatus.BUILDING, DeploymentStatus.DEPLOYING],
+                  },
+                },
+              },
+            },
+          },
+        },
       });
 
       if (!repo) {
@@ -42,18 +56,38 @@ export const removeRepoCommand: Command = {
         return;
       }
 
+      if (!repo.isActive) {
+        await interaction.editReply(`⚠️ El repositorio "${nombre}" ya está desactivado`);
+        return;
+      }
+
+      // Verificar deployments en progreso
+      const activeDeployments = repo._count.deployments;
+      let warningMessage = '';
+      if (activeDeployments > 0) {
+        warningMessage = `\n⚠️ **Atención:** Hay ${activeDeployments} deployment(s) en progreso que continuarán ejecutándose.`;
+      }
+
+      // Desactivar repositorio
       await prisma.repository.update({
         where: { id: repo.id },
         data: { isActive: false },
       });
 
       const embed = new EmbedBuilder()
-        .setTitle('✅ Repositorio eliminado')
-        .setDescription(`**${nombre}** ha sido desactivado`)
+        .setTitle('✅ Repositorio desactivado')
+        .setDescription(
+          `**${nombre}** ha sido desactivado del monitoreo.${warningMessage}\n\n` +
+          `- Los webhooks dejarán de procesarse\n` +
+          `- No se crearán nuevos deployments\n` +
+          `- El historial de deployments se conserva`
+        )
         .setColor(0xff9900)
         .setTimestamp();
 
       await interaction.editReply({ embeds: [embed] });
+      
+      logger.info(`Repositorio "${nombre}" desactivado por ${interaction.user.tag}`);
     } catch (error) {
       logger.error('Error eliminando repositorio:', error);
       await interaction.editReply('❌ Error al eliminar el repositorio');
