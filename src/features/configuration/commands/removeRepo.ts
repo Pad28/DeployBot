@@ -56,38 +56,33 @@ export const removeRepoCommand: Command = {
         return;
       }
 
-      if (!repo.isActive) {
-        await interaction.editReply(`⚠️ El repositorio "${nombre}" ya está desactivado`);
-        return;
-      }
 
       // Verificar deployments en progreso
       const activeDeployments = repo._count.deployments;
       let warningMessage = '';
       if (activeDeployments > 0) {
-        warningMessage = `\n⚠️ **Atención:** Hay ${activeDeployments} deployment(s) en progreso que continuarán ejecutándose.`;
+        warningMessage = `\n⚠️ **Atención:** Hay ${activeDeployments} deployment(s) en progreso que serán cancelados.`;
       }
 
-      // Desactivar repositorio
-      await prisma.repository.update({
+      // Eliminar repositorio permanentemente (y sus deployments en cascada)
+      await prisma.repository.delete({
         where: { id: repo.id },
-        data: { isActive: false },
       });
 
       const embed = new EmbedBuilder()
-        .setTitle('✅ Repositorio desactivado')
+        .setTitle('✅ Repositorio eliminado')
         .setDescription(
-          `**${nombre}** ha sido desactivado del monitoreo.${warningMessage}\n\n` +
+          `**${nombre}** ha sido eliminado permanentemente.${warningMessage}\n\n` +
+          `- El repositorio y su historial de deployments han sido eliminados\n` +
           `- Los webhooks dejarán de procesarse\n` +
-          `- No se crearán nuevos deployments\n` +
-          `- El historial de deployments se conserva`
+          `- Esta acción no se puede deshacer`
         )
-        .setColor(0xff9900)
+        .setColor(0xff0000)
         .setTimestamp();
 
       await interaction.editReply({ embeds: [embed] });
-      
-      logger.info(`Repositorio "${nombre}" desactivado por ${interaction.user.tag}`);
+
+      logger.info(`Repositorio "${nombre}" eliminado permanentemente por ${interaction.user.tag}`);
     } catch (error) {
       logger.error('Error eliminando repositorio:', error);
       await interaction.editReply('❌ Error al eliminar el repositorio');
